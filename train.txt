@@ -1,0 +1,10 @@
+PYTHONDONTWRITEBYTECODE=1 conda run --no-capture-output -n transllmv4 \
+python train_plus.py \
+  --device cuda:0 \
+  --model_path ./Meta-Llama-3.1-8B-Instruct \
+  --data_dir ./data/st_data/pems08 \
+  --save_dir ./logs/llama31_8b_pems08_u4_e50 \
+  --graph_layers 4 \
+  --epochs 50 \
+  --batch_size 8 \
+  --grad_accum_steps 8
