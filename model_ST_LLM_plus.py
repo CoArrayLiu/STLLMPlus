@@ -30,12 +30,13 @@ class TemporalEmbedding(nn.Module):
 
 class LlamaPFGA(nn.Module):
     """
-    Frozen Llama 3.1 backbone with LoRA and graph attention in the last U layers.
+    Partially frozen Llama 3.1 with graph attention in the last U layers.
 
-    The early layers keep Llama's original causal attention. The final graph
-    layers use an additive adjacency mask where non-neighbors receive -inf and
-    every node can attend to itself. Only q_proj/v_proj LoRA weights in those
-    final layers are trainable.
+    LayerNorm remains trainable in every layer. The early layers keep frozen
+    attention and FFN weights with Llama's native causal attention. The final
+    graph layers use an additive adjacency mask where non-neighbors receive
+    -inf and every node can attend to itself; their original attention weights
+    and q_proj/v_proj LoRA adapters are trainable, while their FFNs stay frozen.
     """
 
     def __init__(
@@ -44,9 +45,9 @@ class LlamaPFGA(nn.Module):
         adjacency_matrix,
         num_layers: Optional[int] = None,
         graph_layers: int = 2,
-        lora_rank: int = 8,
+        lora_rank: int = 16,
         lora_alpha: int = 16,
-        lora_dropout: float = 0.05,
+        lora_dropout: float = 0.0,
         gradient_checkpointing: bool = True,
     ):
         super().__init__()
@@ -103,7 +104,31 @@ class LlamaPFGA(nn.Module):
 
         # Traffic features are supplied through inputs_embeds, so the 1+ GB token
         # embedding table is never used. Releasing it materially lowers VRAM use.
-        self.model.get_base_model().embed_tokens = None
+        base_model = self.model.get_base_model()
+        base_model.embed_tokens = None
+
+        # PEFT freezes every original backbone parameter when it injects LoRA.
+        # Restore the paper's partially frozen strategy explicitly:
+        #   * LayerNorm is trainable in all layers;
+        #   * original self-attention plus LoRA is trainable in the final U layers;
+        #   * every FFN remains frozen.
+        # Start from a known state so this behavior does not depend on PEFT's
+        # internal defaults.
+        for parameter in self.model.parameters():
+            parameter.requires_grad = False
+
+        graph_start = num_layers - graph_layers
+        for layer_index, layer in enumerate(base_model.layers):
+            for norm in (layer.input_layernorm, layer.post_attention_layernorm):
+                for parameter in norm.parameters():
+                    parameter.requires_grad = True
+
+            if layer_index >= graph_start:
+                for parameter in layer.self_attn.parameters():
+                    parameter.requires_grad = True
+
+        for parameter in base_model.norm.parameters():
+            parameter.requires_grad = True
 
         adjacency = torch.as_tensor(adjacency_matrix, dtype=torch.bool)
         if adjacency.ndim != 2 or adjacency.shape[0] != adjacency.shape[1]:
@@ -193,9 +218,9 @@ class ST_LLM(nn.Module):
         llm_layers: Optional[int] = 32,
         graph_layers: int = 2,
         embedding_dim: int = 256,
-        lora_rank: int = 8,
+        lora_rank: int = 16,
         lora_alpha: int = 16,
-        lora_dropout: float = 0.05,
+        lora_dropout: float = 0.0,
         dropout: float = 0.1,
         slots_per_day: int = 288,
         gradient_checkpointing: bool = True,

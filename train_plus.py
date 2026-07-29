@@ -15,6 +15,7 @@ import torch
 
 import util
 from model_ST_LLM_plus import ST_LLM
+from ranger21 import Ranger
 
 
 def parse_args():
@@ -34,8 +35,8 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--grad_accum_steps", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", type=float, default=1e-2)
+    parser.add_argument("--learning_rate", type=float, default=1e-3)
+    parser.add_argument("--weight_decay", type=float, default=1e-4)
     parser.add_argument("--input_len", type=int, default=12)
     parser.add_argument("--output_len", type=int, default=12)
     parser.add_argument(
@@ -48,12 +49,15 @@ def parse_args():
         "--graph_layers",
         type=int,
         default=2,
-        help="Final Llama layers using graph-masked attention",
+        help=(
+            "Final U Llama layers using graph-masked, unfrozen attention; "
+            "their FFNs stay frozen"
+        ),
     )
     parser.add_argument("--embedding_dim", type=int, default=256)
-    parser.add_argument("--lora_rank", type=int, default=8)
+    parser.add_argument("--lora_rank", type=int, default=16)
     parser.add_argument("--lora_alpha", type=int, default=16)
-    parser.add_argument("--lora_dropout", type=float, default=0.05)
+    parser.add_argument("--lora_dropout", type=float, default=0.0)
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--clip_grad", type=float, default=5.0)
@@ -366,7 +370,7 @@ def main():
         f"Trainable ratio: {100 * trainable_parameters / total_parameters:.4f}%"
     )
 
-    optimizer = torch.optim.AdamW(
+    optimizer = Ranger(
         (parameter for parameter in model.parameters() if parameter.requires_grad),
         lr=args.learning_rate,
         weight_decay=args.weight_decay,

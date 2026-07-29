@@ -47,8 +47,13 @@ The original NYCTaxi/CHBike data remains available from the project
 The default command uses all 32 layers of the local Llama 3.1 8B Instruct
 checkpoint. Traffic stations are supplied as numerical embeddings, so the
 tokenizer and language-model head are intentionally not used. The first 30
-layers remain frozen with native Llama attention; the final two layers use a
-hard PEMS08 graph mask and train q/v LoRA adapters.
+layers use frozen native Llama attention; the final two layers use a hard
+PEMS08 graph mask and train both their original attention weights and q/v LoRA
+adapters. LayerNorm remains trainable in every layer, while every FFN remains
+frozen. Set `--graph_layers U` to change the number of final graph-attention
+layers. The official training defaults are LoRA `r=16`, `alpha=16`, zero LoRA
+dropout, Ranger with learning rate `1e-3` and weight decay `1e-4`, and masked
+MAE loss.
 
 ```bash
 conda run -n transllmv4 python train_plus.py \
@@ -66,8 +71,9 @@ conda run -n transllmv4 python train_plus.py \
   --save_dir /tmp/stllm_llama31_smoke
 ```
 
-Checkpoints contain only trainable projections and LoRA weights, not another
-copy of the frozen 8B backbone. Model selection uses validation MAE; the test
+Checkpoints contain only the trainable traffic projections, LayerNorm weights,
+final-U original attention weights, and LoRA adapters—not another copy of the
+entire 8B backbone. Model selection uses validation MAE; the test
 set is evaluated once after loading the validation-best checkpoint.
 
 ## BibTex
