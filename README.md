@@ -53,7 +53,10 @@ adapters. LayerNorm remains trainable in every layer, while every FFN remains
 frozen. Set `--graph_layers U` to change the number of final graph-attention
 layers. The official training defaults are LoRA `r=16`, `alpha=16`, zero LoRA
 dropout, Ranger with learning rate `1e-3` and weight decay `1e-4`, and masked
-MAE loss.
+MAE loss. Frozen Llama weights are stored in BF16; all trainable attention,
+LoRA, LayerNorm, and traffic parameters are stored in FP32. Forward compute
+uses BF16 autocast, and gradients accumulate in the FP32 trainable
+parameters.
 
 ```bash
 conda run -n transllmv4 python train_plus.py \

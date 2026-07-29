@@ -37,6 +37,8 @@ class LlamaPFGA(nn.Module):
     graph layers use an additive adjacency mask where non-neighbors receive
     -inf and every node can attend to itself; their original attention weights
     and q_proj/v_proj LoRA adapters are trainable, while their FFNs stay frozen.
+    Frozen Llama weights stay in BF16, while every trainable Llama parameter is
+    stored in FP32 and used through BF16 autocast during training.
     """
 
     def __init__(
@@ -120,13 +122,16 @@ class LlamaPFGA(nn.Module):
         graph_start = num_layers - graph_layers
         for layer_index, layer in enumerate(base_model.layers):
             for norm in (layer.input_layernorm, layer.post_attention_layernorm):
+                norm.float()
                 for parameter in norm.parameters():
                     parameter.requires_grad = True
 
             if layer_index >= graph_start:
+                layer.self_attn.float()
                 for parameter in layer.self_attn.parameters():
                     parameter.requires_grad = True
 
+        base_model.norm.float()
         for parameter in base_model.norm.parameters():
             parameter.requires_grad = True
 
